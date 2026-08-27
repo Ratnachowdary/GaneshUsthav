@@ -133,86 +133,89 @@ export default function Home() {
   // Load data from Supabase on mount
   useEffect(() => {
     const loadData = async () => {
-      try {
-        // Load event details
-        const { data: eventData } = await supabase
-          .from("event_details")
-          .select("*")
-          .single();
-        if (eventData) {
-          setDetails({
-            eventDate: eventData.event_date || defaultDetails.eventDate,
-            immersionDate: eventData.immersion_date || defaultDetails.immersionDate,
-            culturalDate: eventData.cultural_date || defaultDetails.culturalDate,
-            culturalTime: eventData.cultural_time || defaultDetails.culturalTime,
-            venue: eventData.venue || defaultDetails.venue,
-            contact: eventData.contact || defaultDetails.contact,
-          });
-        }
+      const saved = (key: string) => {
+        const value = localStorage.getItem(key);
+        return value ? JSON.parse(value) : null;
+      };
 
-        const { data: eventRowsData } = await supabase
-          .from("event_rows")
-          .select("id, title, date, time")
-          .order("order_index");
-        if (eventRowsData && eventRowsData.length > 0) {
-          setEventRows(eventRowsData);
-        }
+      const detailsResult = await supabase.from("event_details").select("*").limit(1).maybeSingle();
+      if (detailsResult.error) {
+        console.error("Error loading event details:", detailsResult.error);
+        const savedDetails = saved("ganesh-details");
+        if (savedDetails) setDetails(savedDetails);
+      } else if (detailsResult.data) {
+        const eventData = detailsResult.data;
+        setDetails({
+          eventDate: eventData.event_date || defaultDetails.eventDate,
+          immersionDate: eventData.immersion_date || defaultDetails.immersionDate,
+          culturalDate: eventData.cultural_date || defaultDetails.culturalDate,
+          culturalTime: eventData.cultural_time || defaultDetails.culturalTime,
+          venue: eventData.venue || defaultDetails.venue,
+          contact: eventData.contact || defaultDetails.contact,
+        });
+      }
 
-        // Load members
-        const { data: membersData } = await supabase
-          .from("members")
-          .select("*")
-          .order("order_index");
-        if (membersData && membersData.length > 0) {
-          setMembers(membersData.map((m: any) => [m.name, m.role]));
-        }
+      const eventRowsResult = await supabase
+        .from("event_rows")
+        .select("id, title, date, time")
+        .order("order_index");
+      if (eventRowsResult.error) {
+        console.error("Error loading event rows:", eventRowsResult.error);
+        const savedEventRows = saved("ganesh-event-rows");
+        if (savedEventRows) setEventRows(savedEventRows);
+      } else if (eventRowsResult.data && eventRowsResult.data.length > 0) {
+        setEventRows(eventRowsResult.data);
+      }
 
-        // Load donations
-        const { data: donationsData } = await supabase
-          .from("donations")
-          .select("*")
-          .order("created_at", { ascending: false });
-        if (donationsData) {
-          setDonations(
-            donationsData.map((d: any) => ({
-              name: d.name,
-              address: d.address || "",
-              mobile: d.mobile || "",
-              amount: d.amount,
-              date: d.date,
-            }))
-          );
-        }
+      const membersResult = await supabase.from("members").select("*").order("order_index");
+      if (membersResult.error) {
+        console.error("Error loading members:", membersResult.error);
+        const savedMembers = saved("ganesh-members");
+        if (savedMembers) setMembers(savedMembers);
+      } else if (membersResult.data && membersResult.data.length > 0) {
+        setMembers(membersResult.data.map((member: any) => [member.name, member.role]));
+      }
 
-        const { data: expendituresData } = await supabase
-          .from("expenditures")
-          .select("id, title, cost")
-          .order("created_at", { ascending: false });
-        if (expendituresData) setExpenditures(expendituresData);
+      const donationsResult = await supabase
+        .from("donations")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (donationsResult.error) {
+        console.error("Error loading donations:", donationsResult.error);
+        const savedDonations = saved("ganesh-donations");
+        if (savedDonations) setDonations(savedDonations);
+      } else if (donationsResult.data) {
+        setDonations(donationsResult.data.map((donation: any) => ({
+          name: donation.name,
+          address: donation.address || "",
+          mobile: donation.mobile || "",
+          amount: donation.amount,
+          date: donation.date,
+        })));
+      }
 
-        // Load gallery images
-        const { data: galleryData } = await supabase
-          .from("gallery_images")
-          .select("image_url")
-          .order("created_at", { ascending: false });
-        if (galleryData) {
-          setGallery(galleryData.map((g: any) => g.image_url));
-        }
-      } catch (error) {
-        console.error("Error loading data:", error);
-        // Fall back to localStorage if Supabase fails
-        const savedDetails = localStorage.getItem("ganesh-details");
-        const savedDonations = localStorage.getItem("ganesh-donations");
-        const savedExpenditures = localStorage.getItem("ganesh-expenditures");
-        const savedGallery = localStorage.getItem("ganesh-gallery");
-        const savedMembers = localStorage.getItem("ganesh-members");
-        const savedEventRows = localStorage.getItem("ganesh-event-rows");
-        if (savedDetails) setDetails(JSON.parse(savedDetails));
-        if (savedDonations) setDonations(JSON.parse(savedDonations));
-        if (savedExpenditures) setExpenditures(JSON.parse(savedExpenditures));
-        if (savedGallery) setGallery(JSON.parse(savedGallery));
-        if (savedMembers) setMembers(JSON.parse(savedMembers));
-        if (savedEventRows) setEventRows(JSON.parse(savedEventRows));
+      const expendituresResult = await supabase
+        .from("expenditures")
+        .select("id, title, cost")
+        .order("created_at", { ascending: false });
+      if (expendituresResult.error) {
+        console.error("Error loading expenditures:", expendituresResult.error);
+        const savedExpenditures = saved("ganesh-expenditures");
+        if (savedExpenditures) setExpenditures(savedExpenditures);
+      } else if (expendituresResult.data) {
+        setExpenditures(expendituresResult.data);
+      }
+
+      const galleryResult = await supabase
+        .from("gallery_images")
+        .select("image_url")
+        .order("created_at", { ascending: false });
+      if (galleryResult.error) {
+        console.error("Error loading gallery:", galleryResult.error);
+        const savedGallery = saved("ganesh-gallery");
+        if (savedGallery) setGallery(savedGallery);
+      } else if (galleryResult.data) {
+        setGallery(galleryResult.data.map((image: any) => image.image_url));
       }
 
       const savedLanguage = localStorage.getItem("ganesh-language") as
