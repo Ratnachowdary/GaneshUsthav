@@ -68,7 +68,7 @@ const translations = {
     returns: "Our beloved Ganesh returns home.",
     eventDetails: "View event details",
     donationDesk: "Donation desk.",
-    eventHeading: "Ten days of devotion.",
+    eventHeading: "Seven days of devotion.",
     committeeHeading: "Committee members.",
     galleryHeading: "Our celebration gallery.",
     recent: "RECENT CONTRIBUTORS",
@@ -118,7 +118,7 @@ export default function Home() {
   const [expenditures, setExpenditures] = useState<Expenditure[]>([]);
   const [expenditureError, setExpenditureError] = useState("");
   const [gallery, setGallery] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<Donation>({
     name: "",
     address: "",
@@ -132,29 +132,47 @@ export default function Home() {
   });
 
   useEffect(() => {
+    const publicSession = localStorage.getItem("ganesh-public-session") === "true";
+
     if (!isSupabaseConfigured) {
-      if (localStorage.getItem("ganesh-public-session") === "true") {
+      if (publicSession) {
         setLoggedIn(true);
       }
+      setLoading(false);
       return;
     }
 
     let mounted = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (mounted && data.session) {
-        setIsAdmin(true);
-        setLoggedIn(true);
-      }
-    });
-
     const { data: authListener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
+        if (!mounted) return;
         if (session) {
           setIsAdmin(true);
           setLoggedIn(true);
+        } else {
+          setIsAdmin(false);
+          setLoggedIn(publicSession);
         }
       }
     );
+
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (!mounted) return;
+        setIsAdmin(Boolean(data.session));
+        setLoggedIn(Boolean(data.session) || publicSession);
+      })
+      .catch((error) => {
+        console.error("Error restoring session:", error);
+        if (mounted) {
+          setIsAdmin(false);
+          setLoggedIn(publicSession);
+        }
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
 
     return () => {
       mounted = false;
@@ -183,13 +201,20 @@ export default function Home() {
         if (savedDonations) setDonations(savedDonations);
         if (savedExpenditures) setExpenditures(savedExpenditures);
         if (savedGallery) setGallery(savedGallery);
-        setLoading(false);
         return;
       }
 
+      const reportLoadError = (resource: string, error: { code?: string; message?: string }) => {
+        if (error.code === "PGRST205") {
+          console.warn(`Supabase table unavailable for ${resource}; using local fallback.`);
+          return;
+        }
+        console.error(`Error loading ${resource}:`, error.message || error);
+      };
+
       const detailsResult = await supabase.from("event_details").select("*").limit(1).maybeSingle();
       if (detailsResult.error) {
-        console.error("Error loading event details:", detailsResult.error);
+        reportLoadError("event details", detailsResult.error);
         const savedDetails = saved("ganesh-details");
         if (savedDetails) setDetails(savedDetails);
       } else if (detailsResult.data) {
@@ -209,7 +234,7 @@ export default function Home() {
         .select("id, title, date, time")
         .order("order_index");
       if (eventRowsResult.error) {
-        console.error("Error loading event rows:", eventRowsResult.error);
+        reportLoadError("event rows", eventRowsResult.error);
         const savedEventRows = saved("ganesh-event-rows");
         if (savedEventRows) setEventRows(savedEventRows);
       } else if (eventRowsResult.data && eventRowsResult.data.length > 0) {
@@ -218,7 +243,7 @@ export default function Home() {
 
       const membersResult = await supabase.from("members").select("*").order("order_index");
       if (membersResult.error) {
-        console.error("Error loading members:", membersResult.error);
+        reportLoadError("members", membersResult.error);
         const savedMembers = saved("ganesh-members");
         if (savedMembers) setMembers(savedMembers);
       } else if (membersResult.data && membersResult.data.length > 0) {
@@ -230,7 +255,7 @@ export default function Home() {
         .select("*")
         .order("created_at", { ascending: false });
       if (donationsResult.error) {
-        console.error("Error loading donations:", donationsResult.error);
+        reportLoadError("donations", donationsResult.error);
         const savedDonations = saved("ganesh-donations");
         if (savedDonations) setDonations(savedDonations);
       } else if (donationsResult.data) {
@@ -249,7 +274,7 @@ export default function Home() {
         .select("id, title, cost")
         .order("created_at", { ascending: false });
       if (expendituresResult.error) {
-        console.error("Error loading expenditures:", expendituresResult.error);
+        reportLoadError("expenditures", expendituresResult.error);
         const savedExpenditures = saved("ganesh-expenditures");
         if (savedExpenditures) setExpenditures(savedExpenditures);
       } else if (expendituresResult.data) {
@@ -261,7 +286,7 @@ export default function Home() {
         .select("image_url")
         .order("created_at", { ascending: false });
       if (galleryResult.error) {
-        console.error("Error loading gallery:", galleryResult.error);
+        reportLoadError("gallery", galleryResult.error);
         const savedGallery = saved("ganesh-gallery");
         if (savedGallery) setGallery(savedGallery);
       } else if (galleryResult.data) {
@@ -273,7 +298,6 @@ export default function Home() {
         | "te"
         | null;
       if (savedLanguage) setLanguage(savedLanguage);
-      setLoading(false);
     };
 
     loadData();
@@ -330,11 +354,9 @@ export default function Home() {
   }
 
   async function saveAllDetails() {
-    await Promise.all(
-      (Object.keys(details) as (keyof typeof details)[]).map((key) =>
-        saveDetails(key, details[key])
-      )
-    );
+    for (const key of Object.keys(details) as (keyof typeof details)[]) {
+      await saveDetails(key, details[key]);
+    }
   }
 
   function updateEventRow(index: number, field: keyof EventRow, value: string) {
@@ -414,15 +436,22 @@ export default function Home() {
     const memberName = members[index][0];
     const memberRole = members[index][1];
     try {
-      const { error } = await supabase
+      const { data: member, error: findError } = await supabase
         .from("members")
-        .update({
-          name: memberName,
-          role: memberRole,
-          order_index: index,
-        })
-        .eq("order_index", index);
-      if (error) throw error;
+        .select("id")
+        .eq("order_index", index)
+        .maybeSingle();
+      if (findError) throw findError;
+
+      const payload = {
+        name: memberName,
+        role: memberRole,
+        order_index: index,
+      };
+      const result = member
+        ? await supabase.from("members").update(payload).eq("id", member.id)
+        : await supabase.from("members").insert(payload);
+      if (result.error) throw result.error;
     } catch (error: any) {
       console.error("Error updating member:", error);
     }
@@ -605,6 +634,43 @@ export default function Home() {
       localStorage.setItem("ganesh-gallery", JSON.stringify(next));
     } catch (error: any) {
       console.error("Error uploading photo:", error);
+    }
+  }
+
+  function downloadPhoto(photo: string, index: number) {
+    const link = document.createElement("a");
+    link.href = photo;
+    link.download = `ganesh-celebration-${index + 1}`;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.click();
+  }
+
+  async function removePhoto(photo: string) {
+    const next = gallery.filter((galleryPhoto) => galleryPhoto !== photo);
+    setGallery(next);
+    localStorage.setItem("ganesh-gallery", JSON.stringify(next));
+
+    if (!isSupabaseConfigured || photo.startsWith("data:")) return;
+
+    try {
+      const { error: recordError } = await supabase
+        .from("gallery_images")
+        .delete()
+        .eq("image_url", photo);
+      if (recordError) throw recordError;
+
+      const storageMarker = "/storage/v1/object/public/gallery/";
+      const markerIndex = photo.indexOf(storageMarker);
+      if (markerIndex !== -1) {
+        const filePath = decodeURIComponent(photo.slice(markerIndex + storageMarker.length));
+        const { error: storageError } = await supabase.storage
+          .from("gallery")
+          .remove([filePath]);
+        if (storageError) throw storageError;
+      }
+    } catch (error: any) {
+      console.error("Error removing photo:", error);
     }
   }
 
@@ -996,11 +1062,30 @@ export default function Home() {
               </div>
             ) : (
               gallery.map((photo, index) => (
-                <img
-                  src={photo}
-                  alt={`Celebration memory ${index + 1}`}
-                  key={photo.slice(-20)}
-                />
+                <div className="gallery-item" key={photo}>
+                  <img
+                    src={photo}
+                    alt={`Celebration memory ${index + 1}`}
+                  />
+                  <div className="gallery-actions">
+                    <button
+                      className="receipt-button"
+                      type="button"
+                      onClick={() => downloadPhoto(photo, index)}
+                    >
+                      Download
+                    </button>
+                    {isAdmin && (
+                      <button
+                        className="remove-button"
+                        type="button"
+                        onClick={() => removePhoto(photo)}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
               ))
             )}
           </div>
