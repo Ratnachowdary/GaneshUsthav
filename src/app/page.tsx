@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 type Donation = {
+  id?: string;
   name: string;
   address: string;
   mobile: string;
@@ -40,7 +41,7 @@ const defaultDetails = {
   immersionDate: "11 September 2026",
   culturalDate: "12 September 2026",
   culturalTime: "06:30 PM",
-  venue: "Gandhinagar, Vijayaarai",
+  venue: "Gandhinagar, Vijayarai",
   contact: "+91 98765 43210",
 };
 
@@ -130,6 +131,37 @@ export default function Home() {
     cost: "",
   });
 
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      if (localStorage.getItem("ganesh-public-session") === "true") {
+        setLoggedIn(true);
+      }
+      return;
+    }
+
+    let mounted = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (mounted && data.session) {
+        setIsAdmin(true);
+        setLoggedIn(true);
+      }
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (session) {
+          setIsAdmin(true);
+          setLoggedIn(true);
+        }
+      }
+    );
+
+    return () => {
+      mounted = false;
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+
   // Load data from Supabase on mount
   useEffect(() => {
     const loadData = async () => {
@@ -203,6 +235,7 @@ export default function Home() {
         if (savedDonations) setDonations(savedDonations);
       } else if (donationsResult.data) {
         setDonations(donationsResult.data.map((donation: any) => ({
+          id: donation.id,
           name: donation.name,
           address: donation.address || "",
           mobile: donation.mobile || "",
@@ -443,16 +476,16 @@ export default function Home() {
     setDonationError("");
 
     try {
-      const { error } = await supabase.from("donations").insert({
+      const { data, error } = await supabase.from("donations").insert({
         name: form.name,
         address: form.address,
         mobile: form.mobile,
         amount: form.amount,
         date: form.date,
-      });
+      }).select("id, name, address, mobile, amount, date").single();
 
       if (!error) {
-        const next = [...donations, form];
+        const next = [data, ...donations];
         setDonations(next);
         localStorage.setItem("ganesh-donations", JSON.stringify(next));
         setForm({
@@ -476,6 +509,19 @@ export default function Home() {
       console.error("Error adding donation:", error);
       setDonationError(error?.message || "Could not save donation.");
     }
+  }
+
+  async function removeDonation(id: string | undefined) {
+    if (!id) return;
+    const { error } = await supabase.from("donations").delete().eq("id", id);
+    if (error) {
+      console.error("Error removing donation:", error);
+      setDonationError(error.message || "Could not remove donation.");
+      return;
+    }
+    const next = donations.filter((donation) => donation.id !== id);
+    setDonations(next);
+    localStorage.setItem("ganesh-donations", JSON.stringify(next));
   }
 
   async function addExpenditure(event: FormEvent) {
@@ -572,6 +618,7 @@ export default function Home() {
       }
       setIsAdmin(false);
       setLoggedIn(true);
+      localStorage.setItem("ganesh-public-session", "true");
       setLoginError("");
       return;
     }
@@ -602,6 +649,7 @@ export default function Home() {
     }
     setLoggedIn(false);
     setIsAdmin(false);
+    localStorage.removeItem("ganesh-public-session");
     setLoginName("");
     setLoginPassword("");
   }
@@ -857,8 +905,8 @@ export default function Home() {
                 when shared.
               </h2>
               <p>
-                Join the families of Vijayaarai as we welcome Lord Ganesha with
-                music, prasadam, cultural programs and ten days of togetherness.
+                Join the families of Vijayarai as we welcome Lord Ganesha with
+                music, prasadam, cultural programs and seven days of togetherness.
               </p>
               <button
                 className="text-button"
@@ -1033,6 +1081,14 @@ export default function Home() {
                       onClick={() => downloadReceipt(donation)}
                     >
                       Receipt ↓
+                    </button>
+                    <button
+                      className="remove-button"
+                      type="button"
+                      onClick={() => removeDonation(donation.id)}
+                      disabled={!donation.id}
+                    >
+                      Remove
                     </button>
                   </div>
                 ))}
@@ -1287,7 +1343,7 @@ export default function Home() {
 
       <footer>
         <span>ॐ GaneshUsthav</span>
-        <span>Made for Gandhinagar · Vijayaarai</span>
+        <span>Made for Gandhinagar · Vijayarai</span>
         <span>© 2026 Committee</span>
       </footer>
     </main>
