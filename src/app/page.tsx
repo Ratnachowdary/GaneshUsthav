@@ -111,8 +111,17 @@ export default function Home() {
   const [loginError, setLoginError] = useState("");
   const [language, setLanguage] = useState<"en" | "te">("en");
   const [details, setDetails] = useState(defaultDetails);
+  const [savedDetails, setSavedDetails] = useState(defaultDetails);
+  const [showDetailsDialog, setShowDetailsDialog] = useState(false);
+  const [detailsSaving, setDetailsSaving] = useState(false);
   const [eventRows, setEventRows] = useState<EventRow[]>(defaultEventRows);
+  const [savedEventRows, setSavedEventRows] = useState<EventRow[]>(defaultEventRows);
+  const [showEventRowsDialog, setShowEventRowsDialog] = useState(false);
+  const [eventRowsSaving, setEventRowsSaving] = useState(false);
   const [members, setMembers] = useState<[string, string][]>(defaultMembers);
+  const [savedMembers, setSavedMembers] = useState<[string, string][]>(defaultMembers);
+  const [showMembersDialog, setShowMembersDialog] = useState(false);
+  const [membersSaving, setMembersSaving] = useState(false);
   const [donations, setDonations] = useState<Donation[]>([]);
   const [donationError, setDonationError] = useState("");
   const [expenditures, setExpenditures] = useState<Expenditure[]>([]);
@@ -195,9 +204,18 @@ export default function Home() {
         const savedDonations = saved("ganesh-donations");
         const savedExpenditures = saved("ganesh-expenditures");
         const savedGallery = saved("ganesh-gallery");
-        if (savedDetails) setDetails(savedDetails);
-        if (savedEventRows) setEventRows(savedEventRows);
-        if (savedMembers) setMembers(savedMembers);
+        if (savedDetails) {
+          setDetails(savedDetails);
+          setSavedDetails(savedDetails);
+        }
+        if (savedEventRows) {
+          setEventRows(savedEventRows);
+          setSavedEventRows(savedEventRows);
+        }
+        if (savedMembers) {
+          setMembers(savedMembers);
+          setSavedMembers(savedMembers);
+        }
         if (savedDonations) setDonations(savedDonations);
         if (savedExpenditures) setExpenditures(savedExpenditures);
         if (savedGallery) setGallery(savedGallery);
@@ -216,17 +234,22 @@ export default function Home() {
       if (detailsResult.error) {
         reportLoadError("event details", detailsResult.error);
         const savedDetails = saved("ganesh-details");
-        if (savedDetails) setDetails(savedDetails);
+        if (savedDetails) {
+          setDetails(savedDetails);
+          setSavedDetails(savedDetails);
+        }
       } else if (detailsResult.data) {
         const eventData = detailsResult.data;
-        setDetails({
+        const loadedDetails = {
           eventDate: eventData.event_date || defaultDetails.eventDate,
           immersionDate: eventData.immersion_date || defaultDetails.immersionDate,
           culturalDate: eventData.cultural_date || defaultDetails.culturalDate,
           culturalTime: eventData.cultural_time || defaultDetails.culturalTime,
           venue: eventData.venue || defaultDetails.venue,
           contact: eventData.contact || defaultDetails.contact,
-        });
+        };
+        setDetails(loadedDetails);
+        setSavedDetails(loadedDetails);
       }
 
       const eventRowsResult = await supabase
@@ -236,9 +259,13 @@ export default function Home() {
       if (eventRowsResult.error) {
         reportLoadError("event rows", eventRowsResult.error);
         const savedEventRows = saved("ganesh-event-rows");
-        if (savedEventRows) setEventRows(savedEventRows);
+        if (savedEventRows) {
+          setEventRows(savedEventRows);
+          setSavedEventRows(savedEventRows);
+        }
       } else if (eventRowsResult.data && eventRowsResult.data.length > 0) {
         setEventRows(eventRowsResult.data);
+        setSavedEventRows(eventRowsResult.data);
       }
 
       const membersResult = await supabase.from("members").select("*").order("order_index");
@@ -247,7 +274,11 @@ export default function Home() {
         const savedMembers = saved("ganesh-members");
         if (savedMembers) setMembers(savedMembers);
       } else if (membersResult.data && membersResult.data.length > 0) {
-        setMembers(membersResult.data.map((member: any) => [member.name, member.role]));
+        const loadedMembers: [string, string][] = membersResult.data.map(
+          (member: any) => [member.name, member.role]
+        );
+        setMembers(loadedMembers);
+        setSavedMembers(loadedMembers);
       }
 
       const donationsResult = await supabase
@@ -321,7 +352,6 @@ export default function Home() {
   function updateDetails(key: keyof typeof details, value: string) {
     const next = { ...details, [key]: value };
     setDetails(next);
-    localStorage.setItem("ganesh-details", JSON.stringify(next));
   }
 
   async function saveDetails(key: keyof typeof details, value: string) {
@@ -348,15 +378,40 @@ export default function Home() {
             .eq("id", eventRow.id)
         : await supabase.from("event_details").insert(updateData);
       if (result.error) throw result.error;
+      return true;
     } catch (error: any) {
-      console.error("Error updating details:", error);
+      console.error("Error updating details:", error.message || error);
+      return false;
     }
   }
 
   async function saveAllDetails() {
-    for (const key of Object.keys(details) as (keyof typeof details)[]) {
-      await saveDetails(key, details[key]);
+    if (!isSupabaseConfigured) {
+      localStorage.setItem("ganesh-details", JSON.stringify(details));
+      setSavedDetails(details);
+      return true;
     }
+
+    for (const key of Object.keys(details) as (keyof typeof details)[]) {
+      const saved = await saveDetails(key, details[key]);
+      if (!saved) return false;
+    }
+    setSavedDetails(details);
+    localStorage.setItem("ganesh-details", JSON.stringify(details));
+    return true;
+  }
+
+  async function confirmSaveDetails() {
+    setDetailsSaving(true);
+    const saved = await saveAllDetails();
+    setDetailsSaving(false);
+    if (saved) setShowDetailsDialog(false);
+  }
+
+  function cancelDetailsSave() {
+    setDetails(savedDetails);
+    localStorage.setItem("ganesh-details", JSON.stringify(savedDetails));
+    setShowDetailsDialog(false);
   }
 
   function updateEventRow(index: number, field: keyof EventRow, value: string) {
@@ -368,13 +423,19 @@ export default function Home() {
   }
 
   async function saveAllEventRows() {
+    if (!isSupabaseConfigured) {
+      localStorage.setItem("ganesh-event-rows", JSON.stringify(eventRows));
+      setSavedEventRows(eventRows);
+      return true;
+    }
+
     const { data: existingRows, error: loadError } = await supabase
       .from("event_rows")
       .select("id")
       .order("order_index");
     if (loadError) {
-      console.error("Error loading event rows:", loadError);
-      return;
+      console.error("Error loading event rows:", loadError.message || loadError);
+      return false;
     }
 
     for (const [index, row] of eventRows.entries()) {
@@ -387,7 +448,10 @@ export default function Home() {
       const result = row.id
         ? await supabase.from("event_rows").update(payload).eq("id", row.id)
         : await supabase.from("event_rows").insert(payload);
-      if (result.error) console.error("Error saving event row:", result.error);
+      if (result.error) {
+        console.error("Error saving event row:", result.error.message || result.error);
+        return false;
+      }
     }
 
     const currentIds = eventRows.map((row) => row.id).filter(Boolean);
@@ -400,7 +464,24 @@ export default function Home() {
         .delete()
         .in("id", removedIds);
       if (error) console.error("Error removing event rows:", error);
+      if (error) return false;
     }
+    setSavedEventRows(eventRows);
+    localStorage.setItem("ganesh-event-rows", JSON.stringify(eventRows));
+    return true;
+  }
+
+  async function confirmSaveEventRows() {
+    setEventRowsSaving(true);
+    const saved = await saveAllEventRows();
+    setEventRowsSaving(false);
+    if (saved) setShowEventRowsDialog(false);
+  }
+
+  function cancelEventRowsSave() {
+    setEventRows(savedEventRows);
+    localStorage.setItem("ganesh-event-rows", JSON.stringify(savedEventRows));
+    setShowEventRowsDialog(false);
   }
 
   function addEventRow() {
@@ -452,13 +533,40 @@ export default function Home() {
         ? await supabase.from("members").update(payload).eq("id", member.id)
         : await supabase.from("members").insert(payload);
       if (result.error) throw result.error;
+      return true;
     } catch (error: any) {
-      console.error("Error updating member:", error);
+      console.error("Error updating member:", error.message || error);
+      return false;
     }
   }
 
   async function saveAllMembers() {
-    await Promise.all(members.map((_, index) => saveMember(index)));
+    if (!isSupabaseConfigured) {
+      localStorage.setItem("ganesh-members", JSON.stringify(members));
+      setSavedMembers(members);
+      return true;
+    }
+
+    for (const index of members.map((_, memberIndex) => memberIndex)) {
+      const saved = await saveMember(index);
+      if (!saved) return false;
+    }
+    setSavedMembers(members);
+    localStorage.setItem("ganesh-members", JSON.stringify(members));
+    return true;
+  }
+
+  async function confirmSaveMembers() {
+    setMembersSaving(true);
+    const saved = await saveAllMembers();
+    setMembersSaving(false);
+    if (saved) setShowMembersDialog(false);
+  }
+
+  function cancelMembersSave() {
+    setMembers(savedMembers);
+    localStorage.setItem("ganesh-members", JSON.stringify(savedMembers));
+    setShowMembersDialog(false);
   }
 
   async function addMember() {
@@ -1298,7 +1406,6 @@ export default function Home() {
               <input
                 value={details.eventDate}
                 onChange={(e) => updateDetails("eventDate", e.target.value)}
-                onBlur={(e) => saveDetails("eventDate", e.target.value)}
               />
             </label>
             <label>
@@ -1306,7 +1413,6 @@ export default function Home() {
               <input
                 value={details.immersionDate}
                 onChange={(e) => updateDetails("immersionDate", e.target.value)}
-                onBlur={(e) => saveDetails("immersionDate", e.target.value)}
               />
             </label>
             <label>
@@ -1314,7 +1420,6 @@ export default function Home() {
               <input
                 value={details.culturalDate}
                 onChange={(e) => updateDetails("culturalDate", e.target.value)}
-                onBlur={(e) => saveDetails("culturalDate", e.target.value)}
               />
             </label>
             <label>
@@ -1322,7 +1427,6 @@ export default function Home() {
               <input
                 value={details.culturalTime}
                 onChange={(e) => updateDetails("culturalTime", e.target.value)}
-                onBlur={(e) => saveDetails("culturalTime", e.target.value)}
               />
             </label>
             <label>
@@ -1330,7 +1434,6 @@ export default function Home() {
               <input
                 value={details.venue}
                 onChange={(e) => updateDetails("venue", e.target.value)}
-                onBlur={(e) => saveDetails("venue", e.target.value)}
               />
             </label>
             <label>
@@ -1338,11 +1441,10 @@ export default function Home() {
               <input
                 value={details.contact}
                 onChange={(e) => updateDetails("contact", e.target.value)}
-                onBlur={(e) => saveDetails("contact", e.target.value)}
               />
             </label>
           </div>
-          <button className="primary" type="button" onClick={saveAllDetails}>
+          <button className="primary" type="button" onClick={() => setShowDetailsDialog(true)}>
             Save event details
           </button>
           <div className="event-row-admin">
@@ -1379,7 +1481,7 @@ export default function Home() {
                 </button>
               </div>
             ))}
-            <button className="primary" type="button" onClick={saveAllEventRows}>
+            <button className="primary" type="button" onClick={() => setShowEventRowsDialog(true)}>
               Save event schedule
             </button>
           </div>
@@ -1397,18 +1499,16 @@ export default function Home() {
               </button>
             </div>
             {members.map(([name, role], index) => (
-              <div className="member-admin-row" key={`${name}-${index}`}>
+              <div className="member-admin-row" key={`member-${index}`}>
                 <input
                   aria-label={`Member ${index + 1} name`}
                   value={name}
                   onChange={(e) => updateMember(index, 0, e.target.value)}
-                  onBlur={() => saveMember(index)}
                 />
                 <input
                   aria-label={`Member ${index + 1} role`}
                   value={role}
                   onChange={(e) => updateMember(index, 1, e.target.value)}
-                  onBlur={() => saveMember(index)}
                 />
                 <button
                   className="remove-button"
@@ -1419,11 +1519,116 @@ export default function Home() {
                 </button>
               </div>
             ))}
-            <button className="primary" type="button" onClick={saveAllMembers}>
+            <button className="primary" type="button" onClick={() => setShowMembersDialog(true)}>
               Save committee members
             </button>
           </div>
         </section>
+      )}
+
+      {showDetailsDialog && (
+        <div className="dialog-backdrop" role="presentation">
+          <div
+            className="details-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="details-dialog-title"
+          >
+            <p className="eyebrow">CONFIRM CHANGES</p>
+            <h2 id="details-dialog-title">Save event details?</h2>
+            <p className="dialog-copy">
+              Your updated event details will be saved and shown to all visitors.
+            </p>
+            <div className="dialog-actions">
+              <button
+                className="remove-button"
+                type="button"
+                onClick={cancelDetailsSave}
+                disabled={detailsSaving}
+              >
+                Cancel
+              </button>
+              <button
+                className="primary"
+                type="button"
+                onClick={confirmSaveDetails}
+                disabled={detailsSaving}
+              >
+                {detailsSaving ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEventRowsDialog && (
+        <div className="dialog-backdrop" role="presentation">
+          <div
+            className="details-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="event-rows-dialog-title"
+          >
+            <p className="eyebrow">CONFIRM CHANGES</p>
+            <h2 id="event-rows-dialog-title">Save event schedule?</h2>
+            <p className="dialog-copy">
+              Your updated schedule will be saved and shown to all visitors.
+            </p>
+            <div className="dialog-actions">
+              <button
+                className="remove-button"
+                type="button"
+                onClick={cancelEventRowsSave}
+                disabled={eventRowsSaving}
+              >
+                Cancel
+              </button>
+              <button
+                className="primary"
+                type="button"
+                onClick={confirmSaveEventRows}
+                disabled={eventRowsSaving}
+              >
+                {eventRowsSaving ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showMembersDialog && (
+        <div className="dialog-backdrop" role="presentation">
+          <div
+            className="details-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="members-dialog-title"
+          >
+            <p className="eyebrow">CONFIRM CHANGES</p>
+            <h2 id="members-dialog-title">Save committee members?</h2>
+            <p className="dialog-copy">
+              Your updated committee roster will be saved and shown to all visitors.
+            </p>
+            <div className="dialog-actions">
+              <button
+                className="remove-button"
+                type="button"
+                onClick={cancelMembersSave}
+                disabled={membersSaving}
+              >
+                Cancel
+              </button>
+              <button
+                className="primary"
+                type="button"
+                onClick={confirmSaveMembers}
+                disabled={membersSaving}
+              >
+                {membersSaving ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <footer>
