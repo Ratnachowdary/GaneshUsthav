@@ -709,7 +709,7 @@ export default function Home() {
     return (
       <main className="login-shell">
         <div className="login-art">
-          <span className="brand-mark">ॐ</span>
+          <img className="brand-logo" src="/ganesh-logo.png" alt="Ganesh Usthav logo" />
           <p className="eyebrow">GANDHINAGAR · VIJAYARAI</p>
           <h1>
             {text.welcome}
@@ -720,7 +720,7 @@ export default function Home() {
         </div>
         <form className="login-card" onSubmit={signIn}>
           <div className="brand">
-            <span className="brand-mark">ॐ</span>
+            <img className="brand-logo" src="/ganesh-logo.png" alt="Ganesh Usthav logo" />
             <div>
               <strong>
                 Ganesh<span>Usthav</span>
@@ -799,7 +799,7 @@ export default function Home() {
     <main className="shell">
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark">ॐ</span>
+          <img className="brand-logo" src="/ganesh-logo.png" alt="Ganesh Usthav logo" />
           <div>
             <strong>
               Ganesh<span>Usthav</span>
