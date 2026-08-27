@@ -268,6 +268,11 @@ ALTER TABLE expenditures ENABLE ROW LEVEL SECURITY;
 ALTER TABLE members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE gallery_images ENABLE ROW LEVEL SECURITY;
 ALTER TABLE event_details ENABLE ROW LEVEL SECURITY;
+ALTER TABLE admin_users ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Authenticated users can read own admin record" ON admin_users;
+CREATE POLICY "Authenticated users can read own admin record" ON admin_users
+  FOR SELECT TO authenticated USING (id = auth.uid());
 
 DROP POLICY IF EXISTS "Public can read members" ON members;
 CREATE POLICY "Public can read members" ON members FOR SELECT USING (true);
