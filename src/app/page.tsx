@@ -583,7 +583,8 @@ export default function Home() {
       });
 
       if (error) {
-        setLoginError("Use the Supabase admin email and password.");
+        console.error("Supabase login error:", error.message);
+        setLoginError(error.message || "Unable to sign in.");
       } else {
         setIsAdmin(true);
         setLoggedIn(true);
