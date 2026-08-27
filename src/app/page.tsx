@@ -1,5 +1,6 @@
 "use client";
 import { FormEvent, useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 
 type Donation = {
   name: string;
@@ -8,6 +9,20 @@ type Donation = {
   amount: string;
   date: string;
 };
+
+type EventRow = {
+  id?: string;
+  title: string;
+  date: string;
+  time: string;
+};
+
+type Expenditure = {
+  id?: string;
+  title: string;
+  cost: string;
+};
+
 const defaultMembers: [string, string][] = [
   ["అబ్బూరి రఘు", "ప్రెసిడెంట్"],
   ["కొడాలి రత్న", "వైస్-ప్రెసిడెంట్"],
@@ -19,15 +34,70 @@ const defaultMembers: [string, string][] = [
   ["కలిదిండి అనిల్", "కమిటీ సభ్యులు"],
   ["యలవర్తి గోపి", "కమిటీ సభ్యులు"],
 ];
+
 const defaultDetails = {
   eventDate: "06 September 2026",
   immersionDate: "11 September 2026",
+  culturalDate: "12 September 2026",
+  culturalTime: "06:30 PM",
   venue: "Gandhinagar, Vijayaarai",
   contact: "+91 98765 43210",
 };
+
+const defaultEventRows: EventRow[] = [
+  { title: "Installation", date: "06 September 2026", time: "06:00 AM" },
+  { title: "Daily aarti", date: "Every day", time: "06:00 AM & 07:00 PM" },
+  { title: "Cultural Event", date: "12 September 2026", time: "06:30 PM" },
+  { title: "Immersion", date: "11 September 2026", time: "04:00 PM" },
+];
+
 const translations = {
-  en: { overview: "Overview", details: "Event details", members: "Committee members", gallery: "Gallery", donations: "Donations", signIn: "Sign in", publicAccess: "Public access", adminAccess: "Admin access", continue: "Continue", welcome: "Welcome to", returns: "Our beloved Ganesh returns home.", eventDetails: "View event details", donationDesk: "Donation desk.", eventHeading: "Ten days of devotion.", committeeHeading: "Committee members.", galleryHeading: "Our celebration gallery.", recent: "RECENT CONTRIBUTORS", signOut: "Sign out", adminMode: "Admin mode", publicView: "Public view" },
-  te: { overview: "ముఖ్య సమాచారం", details: "కార్యక్రమ వివరాలు", members: "కమిటీ సభ్యులు", gallery: "ఫోటో గ్యాలరీ", donations: "విరాళాలు", signIn: "ప్రవేశించండి", publicAccess: "ప్రజా ప్రవేశం", adminAccess: "అడ్మిన్ ప్రవేశం", continue: "కొనసాగించండి", welcome: "స్వాగతం", returns: "మన గణేశుడు తిరిగి ఇంటికి వస్తున్నాడు.", eventDetails: "కార్యక్రమ వివరాలు చూడండి", donationDesk: "విరాళాల నమోదు.", eventHeading: "భక్తితో పది రోజుల వేడుక.", committeeHeading: "కమిటీ సభ్యులు.", galleryHeading: "మన వేడుక ఫోటోలు.", recent: "ఇటీవల విరాళాలు అందించినవారు", signOut: "నిష్క్రమించండి", adminMode: "అడ్మిన్ మోడ్", publicView: "ప్రజా వీక్షణ" },
+  en: {
+    overview: "Overview",
+    details: "Event details",
+    members: "Committee members",
+    gallery: "Gallery",
+    donations: "Donations",
+    expenditure: "Expenditure",
+    signIn: "Sign in",
+    publicAccess: "Public access",
+    adminAccess: "Admin access",
+    continue: "Continue",
+    welcome: "Welcome to",
+    returns: "Our beloved Ganesh returns home.",
+    eventDetails: "View event details",
+    donationDesk: "Donation desk.",
+    eventHeading: "Ten days of devotion.",
+    committeeHeading: "Committee members.",
+    galleryHeading: "Our celebration gallery.",
+    recent: "RECENT CONTRIBUTORS",
+    signOut: "Sign out",
+    adminMode: "Admin mode",
+    publicView: "Public view",
+  },
+  te: {
+    overview: "ముఖ్య సమాచారం",
+    details: "కార్యక్రమ వివరాలు",
+    members: "కమిటీ సభ్యులు",
+    gallery: "ఫోటో గ్యాలరీ",
+    donations: "విరాళాలు",
+    expenditure: "ఖర్చులు",
+    signIn: "ప్రవేశించండి",
+    publicAccess: "ప్రజా ప్రవేశం",
+    adminAccess: "అడ్మిన్ ప్రవేశం",
+    continue: "కొనసాగించండి",
+    welcome: "స్వాగతం",
+    returns: "మన గణేశుడు తిరిగి ఇంటికి వస్తున్నాడు.",
+    eventDetails: "కార్యక్రమ వివరాలు చూడండి",
+    donationDesk: "విరాళాల నమోదు.",
+    eventHeading: "భక్తితో పది రోజుల వేడుక.",
+    committeeHeading: "కమిటీ సభ్యులు.",
+    galleryHeading: "మన వేడుక ఫోటోలు.",
+    recent: "ఇటీవల విరాళాలు అందించినవారు",
+    signOut: "నిష్క్రమించండి",
+    adminMode: "అడ్మిన్ మోడ్",
+    publicView: "ప్రజా వీక్షణ",
+  },
 };
 
 export default function Home() {
@@ -40,9 +110,14 @@ export default function Home() {
   const [loginError, setLoginError] = useState("");
   const [language, setLanguage] = useState<"en" | "te">("en");
   const [details, setDetails] = useState(defaultDetails);
+  const [eventRows, setEventRows] = useState<EventRow[]>(defaultEventRows);
   const [members, setMembers] = useState<[string, string][]>(defaultMembers);
   const [donations, setDonations] = useState<Donation[]>([]);
+  const [donationError, setDonationError] = useState("");
+  const [expenditures, setExpenditures] = useState<Expenditure[]>([]);
+  const [expenditureError, setExpenditureError] = useState("");
   const [gallery, setGallery] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<Donation>({
     name: "",
     address: "",
@@ -50,89 +125,466 @@ export default function Home() {
     amount: "",
     date: new Date().toISOString().slice(0, 10),
   });
+  const [expenditureForm, setExpenditureForm] = useState<Expenditure>({
+    title: "",
+    cost: "",
+  });
+
+  // Load data from Supabase on mount
   useEffect(() => {
-    const savedDetails = localStorage.getItem("ganesh-details");
-    const savedDonations = localStorage.getItem("ganesh-donations");
-    const savedGallery = localStorage.getItem("ganesh-gallery");
-    const savedMembers = localStorage.getItem("ganesh-members");
-    if (savedDetails) setDetails(JSON.parse(savedDetails));
-    if (savedDonations) setDonations(JSON.parse(savedDonations));
-    if (savedGallery) setGallery(JSON.parse(savedGallery));
-    if (savedMembers) setMembers(JSON.parse(savedMembers));
-    const savedLanguage = localStorage.getItem("ganesh-language") as "en" | "te" | null;
-    if (savedLanguage) setLanguage(savedLanguage);
+    const loadData = async () => {
+      try {
+        // Load event details
+        const { data: eventData } = await supabase
+          .from("event_details")
+          .select("*")
+          .single();
+        if (eventData) {
+          setDetails({
+            eventDate: eventData.event_date || defaultDetails.eventDate,
+            immersionDate: eventData.immersion_date || defaultDetails.immersionDate,
+            culturalDate: eventData.cultural_date || defaultDetails.culturalDate,
+            culturalTime: eventData.cultural_time || defaultDetails.culturalTime,
+            venue: eventData.venue || defaultDetails.venue,
+            contact: eventData.contact || defaultDetails.contact,
+          });
+        }
+
+        const { data: eventRowsData } = await supabase
+          .from("event_rows")
+          .select("id, title, date, time")
+          .order("order_index");
+        if (eventRowsData && eventRowsData.length > 0) {
+          setEventRows(eventRowsData);
+        }
+
+        // Load members
+        const { data: membersData } = await supabase
+          .from("members")
+          .select("*")
+          .order("order_index");
+        if (membersData && membersData.length > 0) {
+          setMembers(membersData.map((m: any) => [m.name, m.role]));
+        }
+
+        // Load donations
+        const { data: donationsData } = await supabase
+          .from("donations")
+          .select("*")
+          .order("created_at", { ascending: false });
+        if (donationsData) {
+          setDonations(
+            donationsData.map((d: any) => ({
+              name: d.name,
+              address: d.address || "",
+              mobile: d.mobile || "",
+              amount: d.amount,
+              date: d.date,
+            }))
+          );
+        }
+
+        const { data: expendituresData } = await supabase
+          .from("expenditures")
+          .select("id, title, cost")
+          .order("created_at", { ascending: false });
+        if (expendituresData) setExpenditures(expendituresData);
+
+        // Load gallery images
+        const { data: galleryData } = await supabase
+          .from("gallery_images")
+          .select("image_url")
+          .order("created_at", { ascending: false });
+        if (galleryData) {
+          setGallery(galleryData.map((g: any) => g.image_url));
+        }
+      } catch (error) {
+        console.error("Error loading data:", error);
+        // Fall back to localStorage if Supabase fails
+        const savedDetails = localStorage.getItem("ganesh-details");
+        const savedDonations = localStorage.getItem("ganesh-donations");
+        const savedExpenditures = localStorage.getItem("ganesh-expenditures");
+        const savedGallery = localStorage.getItem("ganesh-gallery");
+        const savedMembers = localStorage.getItem("ganesh-members");
+        const savedEventRows = localStorage.getItem("ganesh-event-rows");
+        if (savedDetails) setDetails(JSON.parse(savedDetails));
+        if (savedDonations) setDonations(JSON.parse(savedDonations));
+        if (savedExpenditures) setExpenditures(JSON.parse(savedExpenditures));
+        if (savedGallery) setGallery(JSON.parse(savedGallery));
+        if (savedMembers) setMembers(JSON.parse(savedMembers));
+        if (savedEventRows) setEventRows(JSON.parse(savedEventRows));
+      }
+
+      const savedLanguage = localStorage.getItem("ganesh-language") as
+        | "en"
+        | "te"
+        | null;
+      if (savedLanguage) setLanguage(savedLanguage);
+      setLoading(false);
+    };
+
+    loadData();
   }, []);
+
   const text = translations[language];
+  const totalDonationAmount = donations.reduce(
+    (total, donation) => total + (Number(donation.amount) || 0),
+    0
+  );
+  const totalExpenditureAmount = expenditures.reduce(
+    (total, expenditure) => total + (Number(expenditure.cost) || 0),
+    0
+  );
+
   function changeLanguage(nextLanguage: "en" | "te") {
     setLanguage(nextLanguage);
     localStorage.setItem("ganesh-language", nextLanguage);
   }
+
   function updateDetails(key: keyof typeof details, value: string) {
     const next = { ...details, [key]: value };
     setDetails(next);
     localStorage.setItem("ganesh-details", JSON.stringify(next));
   }
+
+  async function saveDetails(key: keyof typeof details, value: string) {
+    const updateData: any = {};
+    if (key === "eventDate") updateData.event_date = value;
+    if (key === "immersionDate") updateData.immersion_date = value;
+    if (key === "culturalDate") updateData.cultural_date = value;
+    if (key === "culturalTime") updateData.cultural_time = value;
+    if (key === "venue") updateData.venue = value;
+    if (key === "contact") updateData.contact = value;
+
+    try {
+      const { data: eventRow, error: findError } = await supabase
+        .from("event_details")
+        .select("id")
+        .limit(1)
+        .maybeSingle();
+      if (findError) throw findError;
+
+      const result = eventRow
+        ? await supabase
+            .from("event_details")
+            .update(updateData)
+            .eq("id", eventRow.id)
+        : await supabase.from("event_details").insert(updateData);
+      if (result.error) throw result.error;
+    } catch (error: any) {
+      console.error("Error updating details:", error);
+    }
+  }
+
+  async function saveAllDetails() {
+    await Promise.all(
+      (Object.keys(details) as (keyof typeof details)[]).map((key) =>
+        saveDetails(key, details[key])
+      )
+    );
+  }
+
+  function updateEventRow(index: number, field: keyof EventRow, value: string) {
+    const next = eventRows.map((row, rowIndex) =>
+      rowIndex === index ? { ...row, [field]: value } : row
+    );
+    setEventRows(next);
+    localStorage.setItem("ganesh-event-rows", JSON.stringify(next));
+  }
+
+  async function saveAllEventRows() {
+    const { data: existingRows, error: loadError } = await supabase
+      .from("event_rows")
+      .select("id")
+      .order("order_index");
+    if (loadError) {
+      console.error("Error loading event rows:", loadError);
+      return;
+    }
+
+    for (const [index, row] of eventRows.entries()) {
+      const payload = {
+        title: row.title,
+        date: row.date,
+        time: row.time,
+        order_index: index,
+      };
+      const result = row.id
+        ? await supabase.from("event_rows").update(payload).eq("id", row.id)
+        : await supabase.from("event_rows").insert(payload);
+      if (result.error) console.error("Error saving event row:", result.error);
+    }
+
+    const currentIds = eventRows.map((row) => row.id).filter(Boolean);
+    const removedIds = (existingRows || [])
+      .map((row) => row.id)
+      .filter((id) => !currentIds.includes(id));
+    if (removedIds.length > 0) {
+      const { error } = await supabase
+        .from("event_rows")
+        .delete()
+        .in("id", removedIds);
+      if (error) console.error("Error removing event rows:", error);
+    }
+  }
+
+  function addEventRow() {
+    const next = [
+      ...eventRows,
+      { title: "New Event", date: "", time: "" },
+    ];
+    setEventRows(next);
+    localStorage.setItem("ganesh-event-rows", JSON.stringify(next));
+  }
+
+  function removeEventRow(index: number) {
+    const next = eventRows.filter((_, rowIndex) => rowIndex !== index);
+    setEventRows(next);
+    localStorage.setItem("ganesh-event-rows", JSON.stringify(next));
+  }
+
   function updateMember(index: number, field: 0 | 1, value: string) {
-    const next = members.map((member, memberIndex) => memberIndex === index ? ([field === 0 ? value : member[0], field === 1 ? value : member[1]] as [string, string]) : member);
+    const next = members.map((member, memberIndex) =>
+      memberIndex === index
+        ? ([
+            field === 0 ? value : member[0],
+            field === 1 ? value : member[1],
+          ] as [string, string])
+        : member
+    );
     setMembers(next);
     localStorage.setItem("ganesh-members", JSON.stringify(next));
+
   }
-  function addMember() {
-    const next = [...members, ["కొత్త సభ్యుడు", "కమిటీ సభ్యులు"] as [string, string]];
+
+  async function saveMember(index: number) {
+    const memberName = members[index][0];
+    const memberRole = members[index][1];
+    try {
+      const { error } = await supabase
+        .from("members")
+        .update({
+          name: memberName,
+          role: memberRole,
+          order_index: index,
+        })
+        .eq("order_index", index);
+      if (error) throw error;
+    } catch (error: any) {
+      console.error("Error updating member:", error);
+    }
+  }
+
+  async function saveAllMembers() {
+    await Promise.all(members.map((_, index) => saveMember(index)));
+  }
+
+  async function addMember() {
+    const newMember = [
+      "కొత్త సభ్యుడు",
+      "కమిటీ సభ్యులు",
+    ] as [string, string];
+    const next = [...members, newMember];
     setMembers(next);
     localStorage.setItem("ganesh-members", JSON.stringify(next));
+
+    try {
+      const { error } = await supabase.from("members").insert({
+        name: newMember[0],
+        role: newMember[1],
+        order_index: members.length,
+      });
+      if (error) console.error("Error adding member:", error);
+    } catch (error: any) {
+      console.error("Error adding member:", error);
+    }
   }
-  function removeMember(index: number) {
+
+  async function removeMember(index: number) {
+    const memberToRemove = members[index];
     const next = members.filter((_, memberIndex) => memberIndex !== index);
     setMembers(next);
     localStorage.setItem("ganesh-members", JSON.stringify(next));
+
+    try {
+      const { error } = await supabase
+        .from("members")
+        .delete()
+        .eq("order_index", index);
+      if (error) console.error("Error removing member:", error);
+    } catch (error: any) {
+      console.error("Error removing member:", error);
+    }
   }
-  function addDonation(event: FormEvent) {
+
+  async function addDonation(event: FormEvent) {
     event.preventDefault();
     if (!form.name || !form.amount || !form.mobile) return;
-    const next = [...donations, form];
-    setDonations(next);
-    localStorage.setItem("ganesh-donations", JSON.stringify(next));
-    setForm({
-      name: "",
-      address: "",
-      mobile: "",
-      amount: "",
-      date: new Date().toISOString().slice(0, 10),
-    });
+    setDonationError("");
+
+    try {
+      const { error } = await supabase.from("donations").insert({
+        name: form.name,
+        address: form.address,
+        mobile: form.mobile,
+        amount: form.amount,
+        date: form.date,
+      });
+
+      if (!error) {
+        const next = [...donations, form];
+        setDonations(next);
+        localStorage.setItem("ganesh-donations", JSON.stringify(next));
+        setForm({
+          name: "",
+          address: "",
+          mobile: "",
+          amount: "",
+          date: new Date().toISOString().slice(0, 10),
+        });
+        setDonationError("");
+      } else {
+        const message = [error.message, error.details, error.hint]
+          .filter(Boolean)
+          .join(" ");
+        console.error("Error adding donation:", message || error);
+        setDonationError(
+          message || "Could not save donation. Check the Supabase table and admin permissions."
+        );
+      }
+    } catch (error: any) {
+      console.error("Error adding donation:", error);
+      setDonationError(error?.message || "Could not save donation.");
+    }
   }
-  function addPhoto(file: File) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const next = [...gallery, String(reader.result)];
+
+  async function addExpenditure(event: FormEvent) {
+    event.preventDefault();
+    if (!expenditureForm.title || !expenditureForm.cost) return;
+    setExpenditureError("");
+
+    const { data, error } = await supabase
+      .from("expenditures")
+      .insert({
+        title: expenditureForm.title,
+        cost: expenditureForm.cost,
+      })
+      .select("id, title, cost")
+      .single();
+    if (error) {
+      const message = [error.message, error.details, error.hint]
+        .filter(Boolean)
+        .join(" ");
+      console.error("Error adding expenditure:", message || error);
+      setExpenditureError(
+        message || "Could not save expenditure. Check the Supabase table and admin permissions."
+      );
+      return;
+    }
+
+    const next = [data, ...expenditures];
+    setExpenditures(next);
+    localStorage.setItem("ganesh-expenditures", JSON.stringify(next));
+    setExpenditureForm({ title: "", cost: "" });
+    setExpenditureError("");
+  }
+
+  async function removeExpenditure(id: string | undefined) {
+    if (!id) return;
+    const { error } = await supabase.from("expenditures").delete().eq("id", id);
+    if (error) {
+      console.error("Error removing expenditure:", error);
+      return;
+    }
+    const next = expenditures.filter((expenditure) => expenditure.id !== id);
+    setExpenditures(next);
+    localStorage.setItem("ganesh-expenditures", JSON.stringify(next));
+  }
+
+  async function addPhoto(file: File) {
+    const timestamp = Date.now();
+    const fileName = `${timestamp}-${file.name}`;
+
+    try {
+      const { error: uploadError } = await supabase.storage
+        .from("gallery")
+        .upload(fileName, file);
+
+      if (uploadError) {
+        console.error("Error uploading file:", uploadError);
+        // Fall back to base64
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64 = String(reader.result);
+          const next = [...gallery, base64];
+          setGallery(next);
+          localStorage.setItem("ganesh-gallery", JSON.stringify(next));
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      const { data: urlData } = supabase.storage
+        .from("gallery")
+        .getPublicUrl(fileName);
+
+      const imageUrl = urlData.publicUrl;
+
+      await supabase.from("gallery_images").insert({
+        image_url: imageUrl,
+      });
+
+      const next = [...gallery, imageUrl];
       setGallery(next);
       localStorage.setItem("ganesh-gallery", JSON.stringify(next));
-    };
-    reader.readAsDataURL(file);
+    } catch (error: any) {
+      console.error("Error uploading photo:", error);
+    }
   }
-  function signIn(event: FormEvent) {
+
+  async function signIn(event: FormEvent) {
     event.preventDefault();
-    if (
-      loginRole === "admin" &&
-      (loginName.trim().toLowerCase() !== "admin" || loginPassword !== "ganesh2026")
-    ) {
-      setLoginError("Use the correct admin username and password.");
+
+    if (loginRole === "public") {
+      if (!loginName.trim()) {
+        setLoginError("Please enter your name to continue.");
+        return;
+      }
+      setIsAdmin(false);
+      setLoggedIn(true);
+      setLoginError("");
       return;
     }
-    if (loginRole === "public" && !loginName.trim()) {
-      setLoginError("Please enter your name to continue.");
-      return;
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: loginName.trim(),
+        password: loginPassword,
+      });
+
+      if (error) {
+        setLoginError("Use the Supabase admin email and password.");
+      } else {
+        setIsAdmin(true);
+        setLoggedIn(true);
+        setLoginError("");
+      }
+    } catch (error: any) {
+      console.error("Login error:", error);
+      setLoginError("An error occurred. Please try again.");
     }
-    setIsAdmin(loginRole === "admin");
-    setLoggedIn(true);
-    setLoginError("");
   }
-  function signOut() {
+
+  async function signOut() {
+    if (isAdmin) {
+      await supabase.auth.signOut();
+    }
     setLoggedIn(false);
     setIsAdmin(false);
     setLoginName("");
     setLoginPassword("");
   }
+
   function downloadReceipt(donation: Donation) {
     const canvas = document.createElement("canvas");
     canvas.width = 1200;
@@ -176,6 +628,14 @@ export default function Home() {
     link.href = canvas.toDataURL("image/png");
     link.click();
   }
+
+  if (loading)
+    return (
+      <main className="shell" style={{ textAlign: "center", paddingTop: "100px" }}>
+        <p>Loading...</p>
+      </main>
+    );
+
   if (!loggedIn)
     return (
       <main className="login-shell">
@@ -235,11 +695,12 @@ export default function Home() {
           ) : (
             <>
               <label>
-                Admin username
+                Admin email
                 <input
+                  type="email"
                   value={loginName}
                   onChange={(e) => setLoginName(e.target.value)}
-                  placeholder="Committee admin"
+                  placeholder="admin@example.com"
                   autoFocus
                 />
               </label>
@@ -264,6 +725,7 @@ export default function Home() {
         </form>
       </main>
     );
+
   return (
     <main className="shell">
       <header className="topbar">
@@ -276,24 +738,57 @@ export default function Home() {
             <small>Gandhinagar Ganesh Usthav Committee</small>
           </div>
         </div>
-        <div className="header-actions"><div className="language-switch"><button className={language === "en" ? "selected" : ""} onClick={() => changeLanguage("en")}>EN</button><button className={language === "te" ? "selected" : ""} onClick={() => changeLanguage("te")}>తెలుగు</button></div><button className="mode-button" onClick={signOut}>{text.signOut} <span className="status-dot" /></button></div>
+        <div className="header-actions">
+          <div className="language-switch">
+            <button
+              className={language === "en" ? "selected" : ""}
+              onClick={() => changeLanguage("en")}
+            >
+              EN
+            </button>
+            <button
+              className={language === "te" ? "selected" : ""}
+              onClick={() => changeLanguage("te")}
+            >
+              తెలుగు
+            </button>
+          </div>
+          <button className="mode-button" onClick={signOut}>
+            {text.signOut} <span className="status-dot" />
+          </button>
+        </div>
       </header>
+
       <section className="hero">
         <div>
           <p className="eyebrow">VIJAYARAI · 2026 CELEBRATION</p>
-          <h1>{language === "en" ? <>Our beloved <em>Ganesh</em><br />returns home.</> : <>{text.returns}</>}</h1>
+          <h1>
+            {language === "en" ? (
+              <>
+                Our beloved <em>Ganesh</em>
+                <br />
+                returns home.
+              </>
+            ) : (
+              <>{text.returns}</>
+            )}
+          </h1>
           <p className="hero-copy">
-            A ten-day celebration of devotion, community and new beginnings,
-            held with love by the people of Gandhinagar.
+            A Seven-day celebration of devotion, community and new beginnings,
+            held with love by the people of Vijayarai.
           </p>
           <button className="primary" onClick={() => setTab("details")}>
             {text.eventDetails} <span>↗</span>
           </button>
         </div>
         <div className="hero-art">
-          <img src="/ganesh-logo.png" alt="Gandhinagar Ganesh Usthav Committee logo" />
+          <img
+            src="/ganesh-logo.png"
+            alt="Gandhinagar Ganesh Usthav Committee logo"
+          />
         </div>
       </section>
+
       <nav className="tabs">
         {[
           ["overview", text.overview],
@@ -301,6 +796,7 @@ export default function Home() {
           ["members", text.members],
           ["gallery", text.gallery],
           ["donations", text.donations],
+          ["expenditure", text.expenditure],
         ].map(([key, label]) => (
           <button
             key={key}
@@ -311,6 +807,7 @@ export default function Home() {
           </button>
         ))}
       </nav>
+
       {tab === "overview" && (
         <>
           <section className="metrics">
@@ -342,54 +839,40 @@ export default function Home() {
                 Join the families of Vijayaarai as we welcome Lord Ganesha with
                 music, prasadam, cultural programs and ten days of togetherness.
               </p>
-              <button className="text-button" onClick={() => setTab("members")}>
+              <button
+                className="text-button"
+                onClick={() => setTab("members")}
+              >
                 Meet the committee <span>→</span>
               </button>
             </div>
             <div className="schedule">
               <p className="eyebrow">SAVE THE DATES</p>
-              <div className="date-row">
-                <b>01</b>
-                <div>
-                  <strong>Installation & pooja</strong>
-                  <span>{details.eventDate} · 06:00 AM</span>
+              {eventRows.map((row, index) => (
+                <div className="date-row" key={row.id || `${row.title}-${index}`}>
+                  <b>{String(index + 1).padStart(2, "0")}</b>
+                  <div>
+                    <strong>{row.title}</strong>
+                    <span>{row.date} · {row.time}</span>
+                  </div>
                 </div>
-              </div>
-              <div className="date-row">
-                <b>07</b>
-                <div>
-                  <strong>Cultural evening</strong>
-                  <span>12 September · 06:30 PM</span>
-                </div>
-              </div>
-              <div className="date-row">
-                <b>11</b>
-                <div>
-                  <strong>Immersion procession</strong>
-                  <span>{details.immersionDate} · 04:00 PM</span>
-                </div>
-              </div>
+              ))}
             </div>
           </section>
         </>
       )}
+
       {tab === "details" && (
         <section className="content-section">
           <p className="eyebrow">EVENT DETAILS</p>
           <h2>{text.eventHeading}</h2>
           <div className="detail-list">
-            <div>
-              <span>Installation</span>
-              <strong>{details.eventDate} · 06:00 AM</strong>
-            </div>
-            <div>
-              <span>Daily aarti</span>
-              <strong>06:00 AM & 07:00 PM</strong>
-            </div>
-            <div>
-              <span>Immersion</span>
-              <strong>{details.immersionDate} · 04:00 PM</strong>
-            </div>
+            {eventRows.map((row, index) => (
+              <div key={row.id || `${row.title}-${index}`}>
+                <span>{row.title}</span>
+                <strong>{row.date} · {row.time}</strong>
+              </div>
+            ))}
             <div>
               <span>Venue</span>
               <strong>{details.venue}</strong>
@@ -401,6 +884,7 @@ export default function Home() {
           </div>
         </section>
       )}
+
       {tab === "members" && (
         <section className="content-section">
           <p className="eyebrow">THE PEOPLE BEHIND THE CELEBRATION</p>
@@ -418,6 +902,7 @@ export default function Home() {
           </div>
         </section>
       )}
+
       {tab === "gallery" && (
         <section className="content-section">
           <p className="eyebrow">MOMENTS TO REMEMBER</p>
@@ -452,10 +937,14 @@ export default function Home() {
           </div>
         </section>
       )}
+
       {tab === "donations" && (
         <section className="content-section">
           <p className="eyebrow">SEVA & SUPPORT</p>
           <h2>{text.donationDesk}</h2>
+          <p className="donation-total">
+            Total collected: <strong>Rs. {totalDonationAmount.toLocaleString("en-IN")}</strong>
+          </p>
           {isAdmin ? (
             <div className="donation-layout">
               <form onSubmit={addDonation} className="donation-form">
@@ -500,6 +989,7 @@ export default function Home() {
                 <button className="primary" type="submit">
                   Add donation
                 </button>
+                {donationError && <p className="login-error">{donationError}</p>}
               </form>
               <div className="donation-log">
                 <p className="eyebrow">RECEIPTS · {donations.length}</p>
@@ -556,7 +1046,9 @@ export default function Home() {
                     >
                       <div>
                         <strong>{donation.name}</strong>
-                        <span>{donation.address || "Address not provided"}</span>
+                        <span>
+                          {donation.address || "Address not provided"}
+                        </span>
                       </div>
                       <div>
                         <strong>Rs. {donation.amount}</strong>
@@ -570,39 +1062,208 @@ export default function Home() {
           )}
         </section>
       )}
-      {isAdmin && tab === "details" && (
-        <section className="admin-panel">
-          <p className="eyebrow">ADMIN EDITOR · CHANGES SAVE ON THIS DEVICE</p>
-          <div className="admin-fields">
-            {Object.entries(details).map(([key, value]) => (
-              <label key={key}>
-                {key.replace(/([A-Z])/g, " $1")}
+
+      {tab === "expenditure" && (
+        <section className="content-section">
+          <p className="eyebrow">EVENT EXPENDITURE</p>
+          <h2>Expenditure</h2>
+          <p className="donation-total">
+            Total expenditure: <strong>Rs. {totalExpenditureAmount.toLocaleString("en-IN")}</strong>
+          </p>
+          {isAdmin && (
+            <form onSubmit={addExpenditure} className="expenditure-form">
+              <label>
+                Title
                 <input
-                  value={value}
+                  value={expenditureForm.title}
                   onChange={(e) =>
-                    updateDetails(key as keyof typeof details, e.target.value)
+                    setExpenditureForm({ ...expenditureForm, title: e.target.value })
                   }
+                  required
                 />
               </label>
-            ))}
+              <label>
+                Cost (INR)
+                <input
+                  type="number"
+                  min="0"
+                  value={expenditureForm.cost}
+                  onChange={(e) =>
+                    setExpenditureForm({ ...expenditureForm, cost: e.target.value })
+                  }
+                  required
+                />
+              </label>
+              <button className="primary" type="submit">Add expenditure</button>
+            </form>
+          )}
+          {expenditureError && <p className="login-error">{expenditureError}</p>}
+          <div className="expenditure-table">
+            <div className="expenditure-row expenditure-heading">
+              <strong>Title</strong>
+              <strong>Cost</strong>
+              {isAdmin && <span />}
+            </div>
+            {expenditures.length === 0 ? (
+              <p className="muted">No expenditure recorded yet.</p>
+            ) : (
+              expenditures.map((expenditure) => (
+                <div className="expenditure-row" key={expenditure.id || expenditure.title}>
+                  <span>{expenditure.title}</span>
+                  <strong>Rs. {Number(expenditure.cost || 0).toLocaleString("en-IN")}</strong>
+                  {isAdmin && (
+                    <button
+                      className="remove-button"
+                      type="button"
+                      onClick={() => removeExpenditure(expenditure.id)}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              ))
+            )}
           </div>
         </section>
       )}
-      {isAdmin && tab === "members" && (
+
+      {isAdmin && tab === "details" && (
         <section className="admin-panel">
-          <p className="eyebrow">COMMITTEE EDITOR · CHANGES SAVE ON THIS DEVICE</p>
-          <div className="member-admin">
-            <div className="member-admin-heading"><p className="eyebrow">COMMITTEE ROSTER</p><button className="receipt-button" onClick={addMember}>+ Add member</button></div>
-            {members.map(([name, role], index) => (
-              <div className="member-admin-row" key={`${name}-${index}`}>
-                <input aria-label={`Member ${index + 1} name`} value={name} onChange={(e) => updateMember(index, 0, e.target.value)} />
-                <input aria-label={`Member ${index + 1} role`} value={role} onChange={(e) => updateMember(index, 1, e.target.value)} />
-                <button className="remove-button" onClick={() => removeMember(index)} aria-label={`Remove ${name}`}>Remove</button>
+          <p className="eyebrow">ADMIN EDITOR · SYNCED TO SUPABASE</p>
+          <div className="admin-fields">
+            <label>
+              Event Date
+              <input
+                value={details.eventDate}
+                onChange={(e) => updateDetails("eventDate", e.target.value)}
+                onBlur={(e) => saveDetails("eventDate", e.target.value)}
+              />
+            </label>
+            <label>
+              Immersion Date
+              <input
+                value={details.immersionDate}
+                onChange={(e) => updateDetails("immersionDate", e.target.value)}
+                onBlur={(e) => saveDetails("immersionDate", e.target.value)}
+              />
+            </label>
+            <label>
+              Cultural Date
+              <input
+                value={details.culturalDate}
+                onChange={(e) => updateDetails("culturalDate", e.target.value)}
+                onBlur={(e) => saveDetails("culturalDate", e.target.value)}
+              />
+            </label>
+            <label>
+              Cultural Time
+              <input
+                value={details.culturalTime}
+                onChange={(e) => updateDetails("culturalTime", e.target.value)}
+                onBlur={(e) => saveDetails("culturalTime", e.target.value)}
+              />
+            </label>
+            <label>
+              Venue
+              <input
+                value={details.venue}
+                onChange={(e) => updateDetails("venue", e.target.value)}
+                onBlur={(e) => saveDetails("venue", e.target.value)}
+              />
+            </label>
+            <label>
+              Contact
+              <input
+                value={details.contact}
+                onChange={(e) => updateDetails("contact", e.target.value)}
+                onBlur={(e) => saveDetails("contact", e.target.value)}
+              />
+            </label>
+          </div>
+          <button className="primary" type="button" onClick={saveAllDetails}>
+            Save event details
+          </button>
+          <div className="event-row-admin">
+            <div className="member-admin-heading">
+              <p className="eyebrow">EVENT SCHEDULE</p>
+              <button className="receipt-button" type="button" onClick={addEventRow}>
+                + Add event
+              </button>
+            </div>
+            {eventRows.map((row, index) => (
+              <div className="event-row-admin-item" key={row.id || index}>
+                <input
+                  aria-label={`Event ${index + 1} title`}
+                  value={row.title}
+                  onChange={(e) => updateEventRow(index, "title", e.target.value)}
+                />
+                <input
+                  aria-label={`Event ${index + 1} date`}
+                  value={row.date}
+                  onChange={(e) => updateEventRow(index, "date", e.target.value)}
+                />
+                <input
+                  aria-label={`Event ${index + 1} time`}
+                  value={row.time}
+                  onChange={(e) => updateEventRow(index, "time", e.target.value)}
+                />
+                <button
+                  className="remove-button"
+                  type="button"
+                  onClick={() => removeEventRow(index)}
+                  aria-label={`Remove ${row.title}`}
+                >
+                  Remove
+                </button>
               </div>
             ))}
+            <button className="primary" type="button" onClick={saveAllEventRows}>
+              Save event schedule
+            </button>
           </div>
         </section>
       )}
+
+      {isAdmin && tab === "members" && (
+        <section className="admin-panel">
+          <p className="eyebrow">COMMITTEE EDITOR · SYNCED TO SUPABASE</p>
+          <div className="member-admin">
+            <div className="member-admin-heading">
+              <p className="eyebrow">COMMITTEE ROSTER</p>
+              <button className="receipt-button" onClick={addMember}>
+                + Add member
+              </button>
+            </div>
+            {members.map(([name, role], index) => (
+              <div className="member-admin-row" key={`${name}-${index}`}>
+                <input
+                  aria-label={`Member ${index + 1} name`}
+                  value={name}
+                  onChange={(e) => updateMember(index, 0, e.target.value)}
+                  onBlur={() => saveMember(index)}
+                />
+                <input
+                  aria-label={`Member ${index + 1} role`}
+                  value={role}
+                  onChange={(e) => updateMember(index, 1, e.target.value)}
+                  onBlur={() => saveMember(index)}
+                />
+                <button
+                  className="remove-button"
+                  onClick={() => removeMember(index)}
+                  aria-label={`Remove ${name}`}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+            <button className="primary" type="button" onClick={saveAllMembers}>
+              Save committee members
+            </button>
+          </div>
+        </section>
+      )}
+
       <footer>
         <span>ॐ GaneshUsthav</span>
         <span>Made for Gandhinagar · Vijayaarai</span>
