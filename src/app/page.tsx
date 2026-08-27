@@ -1,6 +1,6 @@
 "use client";
 import { FormEvent, useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 type Donation = {
   name: string;
@@ -137,6 +137,23 @@ export default function Home() {
         const value = localStorage.getItem(key);
         return value ? JSON.parse(value) : null;
       };
+
+      if (!isSupabaseConfigured) {
+        const savedDetails = saved("ganesh-details");
+        const savedEventRows = saved("ganesh-event-rows");
+        const savedMembers = saved("ganesh-members");
+        const savedDonations = saved("ganesh-donations");
+        const savedExpenditures = saved("ganesh-expenditures");
+        const savedGallery = saved("ganesh-gallery");
+        if (savedDetails) setDetails(savedDetails);
+        if (savedEventRows) setEventRows(savedEventRows);
+        if (savedMembers) setMembers(savedMembers);
+        if (savedDonations) setDonations(savedDonations);
+        if (savedExpenditures) setExpenditures(savedExpenditures);
+        if (savedGallery) setGallery(savedGallery);
+        setLoading(false);
+        return;
+      }
 
       const detailsResult = await supabase.from("event_details").select("*").limit(1).maybeSingle();
       if (detailsResult.error) {
